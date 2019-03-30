@@ -1,8 +1,9 @@
 # stat423-project
-project for stat423
+Project for Stat423 
 Title is "Life Expectancy Analysis and Prediction"
 
-Abstract: 
+Abstract: Applied Regression and Analysis of Variance
+
 Focusing on some potential factors that might affect the life expectancy at birth. A
 prediction about the lifespan of people in a particular country will also be performed based on our model.
 Statistical methods such as model selection, ANOVA F test, multiple regression, and model diagnostics
