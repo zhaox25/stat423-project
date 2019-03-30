@@ -1,0 +1,351 @@
+---
+title: "Project"
+author: "Xuehan Zhao"
+date: "February 23, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(results = 'hide')
+library(car)
+library(leaps)
+library(dplyr)
+```
+
+## 1. Overview 
+```{r 1}
+dat = read.csv("/Users/tcc/Desktop/Winter/stat423/project/423data.csv")
+# dat = read.csv("Life expectancy data.csv", header = T)
+nrow(dat)
+head(dat)
+```
+
+201 observations. 
+
+Dependent variable: Life Expectancy 
+
+Independent Variables: Health, water, GDP, Region, measles, pm2.5, food.
+
+### histogram of variables 
+
+```{r 2}
+par(mfrow = c(2,2))
+hist(dat$LifeExpectancy)
+hist(dat$health)
+hist(dat$water)
+hist(dat$GDP)
+par(mfrow = c(2,2))
+hist(dat$measles)
+hist(dat$pm2.5)
+hist(dat$food)
+```
+
+Only food is roughly symmetric.
+
+Life expectancy, water, measles, pm2.5 are left-skewed. 
+
+health, GDP are right-skewed. 
+
+### scatter plot of x vs y 
+```{r 3}
+par(mfrow = c(2,2))
+plot(dat$health, dat$LifeExpectancy)
+plot(dat$water, dat$LifeExpectancy)
+plot(dat$GDP, dat$LifeExpectancy)
+plot(dat$measles, dat$LifeExpectancy)
+par(mfrow = c(1,2))
+plot(dat$pm2.5, dat$LifeExpectancy)
+plot(dat$food, dat$LifeExpectancy)
+```
+
+
+## 2. Transformation
+
+Life Expectancy - unchanged
+
+health - take log
+
+water - p = 9
+
+GDP - take log
+
+measles - turn into categorical data, cut at 50,75
+
+pm2.5 - logit
+
+food - unchanged
+
+```{r 4}
+par(mfrow = c(2,2))
+symbox(~LifeExpectancy, data = dat) # no transformation needed 
+symbox(~health, data = dat) # log
+symbox(~water, data = dat) # try positive large p like 9
+water_new = (dat$water^9 - 1)/9
+boxplot(water_new, main = "boxplot of water with p = 9")
+
+par(mfrow = c(2,2))
+symbox(~GDP, data = dat) # log 
+symbox(~measles, data = dat)
+
+hist(logit(dat$pm2.5, adjust = 0.025))
+pm2.5_new = logit(dat$pm2.5, adjust = 0.025)
+symbox(~food, data = dat) # no need to change 
+
+
+```
+
+### scatter plot after transformation. 
+```{r 5}
+par(mfrow = c(2,2))
+plot(log(dat$health), dat$LifeExpectancy)
+plot(water_new, dat$LifeExpectancy)
+plot(log(dat$GDP), dat$LifeExpectancy)
+par(mfrow = c(2,2))
+plot(pm2.5_new, dat$LifeExpectancy)
+plot(dat$food, dat$LifeExpectancy)
+
+
+measles_new = cut(dat$measles, breaks = c(0,50,75,100))
+boxplot(dat$LifeExpectancy ~ measles_new)
+boxplot(dat$LifeExpectancy ~ dat$Region,names = c("Asia","Euro","N Ameri","S Ameri", "Afr", "Ocea"))
+```
+
+## 3. Regression
+
+### (a). check multicollinearity
+```{r 6}
+data = data.frame(country = dat$Country, exp = dat$LifeExpectancy,
+                  health = log(dat$health),
+                  water = water_new, GDP = log(dat$GDP), 
+                  measles = measles_new, pm2.5 = pm2.5_new, 
+                  food = dat$food, region = as.factor(dat$Region))
+data_have_na = data
+data = data[complete.cases(data), ]
+```
+
+
+
+```{r echo = T, results=T }
+# correlation
+cor(na.omit(data[,-c(1,2,6,9)]))
+
+
+# check Generalized VIF
+mymodel1 <- lm(exp~health+water+GDP+measles+pm2.5+food+region, data = data)
+vif(mymodel1) # VIF > 5 indicates presence of multicollinearity
+
+
+# Model Respecification
+# x <- cbind(log(dat$health), water_new, log(dat$GDP), measles_new, 
+# pm2.5_new, dat$food, as.factor(dat$Region))
+x <- na.omit(data[,-c(1,2,6,9)])
+pca <- princomp(na.omit(x)) # principle component
+summary(pca)
+round(pca$loadings, 2)
+```
+
+
+
+
+
+
+### (b). Model Selection
+
+
+```{r 7}
+# cross-validation
+set.seed(123)
+n = nrow(data)
+w = sample(n,n/2)
+train = data[w,-1] 
+test = data[-w,] 
+
+## Model Selection ##
+# fit all 
+regfit.full = regsubsets(exp~health+water+measles+pm2.5+food+GDP+region, data = train, nvmax=7)
+
+# AIC
+fit_full = lm(exp~., data=train)
+fit_null = lm(exp~1, data=train)
+AIC = step(fit_full, scope=list(lower=fit_null), direction="both")
+aic = c(256.87, 254.93,253.21,251.93)
+
+num = c(7,6,5,4)
+
+par(mfrow = c(2,2))
+# Cp
+plot(summary(regfit.full)$cp, ylab = "Cp", xlab ="number of predictors", type = "l")
+num_var = 1:7
+index2=which.min(abs(summary(regfit.full)$cp - (num_var+1)))
+points(index2,summary(regfit.full)$cp[index2],col="red",cex=2,pch=20)
+
+# BIC
+plot(summary(regfit.full)$bic,ylab="BIC",xlab="number of predictors",type="l")
+index3=which.min(summary(regfit.full)$bic)
+points(index3,summary(regfit.full)$bic[index3],col="red",cex=2,pch=20)
+
+# AIC
+plot(num, aic,ylab = "AIC", xlab ="number of predictors", type = "l")
+index4 = which.min(aic)
+points(num[index4], aic[index4],col="red",cex=2,pch=20)
+# adjusted R^2
+plot(summary(regfit.full)$adjr2,ylab="Adjusted R^2",xlab="number of predictors",type="l")
+index1=which.max(summary(regfit.full)$adjr2)
+points(index1,summary(regfit.full)$adjr2[index1],col="red",cex=2,pch=20)
+
+#coeffcients of the best model obtained#
+coef(regfit.full,4)
+```
+
+
+
+
+
+### (c). check interaction terms:
+```{r echo = T, results=T}
+fit.interact = lm(exp~health*water*measles*region, data = data)
+round(summary(fit.interact)$coef, 3)
+
+#Anova(fit.interact, type = "II")
+```
+
+### (d). regression
+```{r 8, results='markup'}
+
+#Total MSE
+fit.t = lm(exp~health+water+measles+region, data = train)
+summary(fit.t)
+pred = predict(fit.t,newdata =test)
+mean((pred - test$exp)^2)
+```
+
+health  water  measles  region 5
+
+drop pm2.5, food.
+
+$$Life Expectancy = 49.37 + 2.192log(health) + 6.217*10^{-17}water^9/9$$
+$$+
+\begin{cases}
+	0, \quad &\mbox{$measles \in (0,50]$}\\
+	5.837, \quad &\mbox{$measles \in (50,75]$}\\
+	7.605, \quad &\mbox{$measles \in (75,100]$}
+\end{cases}
++
+\begin{cases}
+	0, \quad &\mbox{$Asia$}\\
+	-1.514, \quad &\mbox{$Europe$}\\
+	-1.133, \quad &\mbox{$North America$}\\
+	-2.698, \quad &\mbox{$South America$}\\
+	-6.023, \quad &\mbox{$Afica$}\\
+	-1.595, \quad &\mbox{$Oceania$}
+\end{cases}$$
+
+
+
+So, no need for interaction terms.
+
+
+## 4. Prediction
+
+
+### examples & CI
+```{r echo = T, results=T}
+# UK; Developed Country
+predict(fit.t, newdata = test[83,], interval = "prediction", level = 0.95) 
+test[83,]$exp # actual value 
+
+# Thailand; developing country
+predict(fit.t, newdata = test[75,], interval = "prediction", level = 0.95) 
+test[75,]$exp # actual value 
+
+# Ethiopia; Least developed country
+predict(fit.t, newdata = test[24,], interval = "prediction", level = 0.95) 
+test[24,]$exp # actual value 
+
+# Mauritania; Least developed country
+predict(fit.t, newdata = test[49,], interval = "prediction", level = 0.95) 
+test[49,]$exp # actual value 
+```
+
+```{r}
+res = test$exp - predict(fit.t, newdata = test)
+index =  which(res >= 5)
+big = test[index,]
+```
+
+## 5. Diagnose
+
+```{r echo = T, results=T}
+fit.t = lm(exp~health+water+measles+region, data = train)
+## DFBETAS D^{*}
+cutoff = 2/sqrt(nrow(train))
+dfbetasPlots(fit.t, intercept = T, id.n = 3)
+temp = dfbetas(fit.t)
+
+order(abs(temp[,1]),decreasing = T)[c(1,2)]
+order(abs(temp[,2]),decreasing = T)[c(1,2)]
+order(abs(temp[,3]),decreasing = T)[c(1,2)]
+order(abs(temp[,4]),decreasing = T)[c(1,2)]
+order(abs(temp[,5]),decreasing = T)[c(1,2)]
+order(abs(temp[,6]),decreasing = T)[c(1,2)]
+order(abs(temp[,7]),decreasing = T)[c(1,2)]
+order(abs(temp[,8]),decreasing = T)[c(1,2)]
+order(abs(temp[,9]),decreasing = T)[c(1,2)]
+order(abs(temp[,10]),decreasing = T)[c(1,2)]
+
+## Cook's distance
+influenceIndexPlot(fit.t, vars="Cook", id.n = 3, id.cex = 0.5)
+D_i = cooks.distance(fit.t)
+order(D_i,decreasing = T)[c(1,2)]
+
+```
+
+```{r echo = T, results=T}
+D_i[20]
+D_i[2]
+```
+
+Influence Analysis Summary
+
+Cook's distance  $D_{20}$ = 0.2 (next largest $D_2$ = 0.07)
+
+DFBETAS 
+
+![  ](/Users/tcc/Desktop/Winter/stat423/project/summary.png)
+
+\pagebreak
+ 
+Overall, observation 20 (=173 Swaziland, country with the lowest life expectancy ), 14 (=159 Libya), 22 (=126 Morocco) appear to have the most influence on the results.
+
+```{r}
+influencePlot(fit.t, id.n = 3)
+```
+
+        
+## appendix 
+
+```{r ref.label='1', eval=FALSE, echo=TRUE}
+```
+
+
+```{r ref.label='2', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='3', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='4', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='5', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='6', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='7', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='8', eval=FALSE, echo=TRUE}
+```
