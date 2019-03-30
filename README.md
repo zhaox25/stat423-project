@@ -7,3 +7,6 @@ Statistical methods such as model selection, ANOVA F test, multiple regression, 
 are used in this analysis. Based on the results, health expenditure per capita, the percentage of population
 with access to improved water source, child immunization against measles, and the continent the country
 belongs to clearly have some impacts on the life expectancy at birth.
+
+## Group Members:
+Xuehan Zhao, Xinyue Li, Yuqun Tang
